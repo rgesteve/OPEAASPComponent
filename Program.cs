@@ -1,11 +1,15 @@
 using System.Net.Http;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Text;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var client = new HttpClient();
 client.Timeout = TimeSpan.FromMilliseconds(60 * 1000 * 10); // 10 minutes
+
+ConnectionMultiplexer connectionMultiplexer = await ConnectionMultiplexer.ConnectAsync("vscodelinux:6379");
+IDatabase db = connectionMultiplexer.GetDatabase();
 
 // Add Semantic Kernel
 IKernelBuilder kernelBuilder = builder.Services.AddKernel();
