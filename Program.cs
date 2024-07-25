@@ -1,5 +1,6 @@
 using System.Net.Http;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
