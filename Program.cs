@@ -1,4 +1,8 @@
 using System.Net.Http;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Text;
 using StackExchange.Redis;
@@ -8,8 +12,10 @@ var builder = WebApplication.CreateBuilder(args);
 var client = new HttpClient();
 client.Timeout = TimeSpan.FromMilliseconds(60 * 1000 * 10); // 10 minutes
 
-ConnectionMultiplexer connectionMultiplexer = await ConnectionMultiplexer.ConnectAsync("vscodelinux:6379");
-IDatabase db = connectionMultiplexer.GetDatabase();
+builder.Services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = "vscodelinux:6379";
+        });
 
 // Add Semantic Kernel
 IKernelBuilder kernelBuilder = builder.Services.AddKernel();
@@ -21,29 +27,40 @@ kernelBuilder.AddOpenAIChatCompletion(modelId: "phi3", apiKey: null, endpoint: n
 
 var app = builder.Build();
 
-var summaries = new[]
+app.MapGet("/v1/dataprep", async (IDistributedCache cache) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    var person = await GetDocumentFromCache(cache);
+    return person != null ? Results.Ok(person) : Results.NotFound();
+});
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+app.MapPost("/v1/dataprep", async (Document document, IDistributedCache cache) => {
+    var json = JsonSerializer.Serialize(document);
+    //var jsonString = json.ToString();
+    //await cache.SetStringAsync("person", json);
+    //await cache.SetStringAsync("person2", "testing");
+    await cache.SetStringAsync("document", json);
+    return Results.Created("/document", document);
+});
 
 app.Run("http://localhost:5000");
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
+/*private */static async Task<Document> GetDocumentFromCache(IDistributedCache cache)
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    var cachedDocument = await cache.GetStringAsync("document");
+    return cachedDocument != null ? JsonSerializer.Deserialize<Document>(cachedDocument) : null;
 }
+
+#if false
+/*private */static async Task StorePersonInCache(IConnectionMultiplexer redis, string json)
+{
+    var db = redis.GetDatabase();
+    await db.StringSetAsync("person", json);
+}
+#endif
+
+public class Document
+{
+    public string? Name { get; set; }
+    public int Id { get; set; }
+}
+
